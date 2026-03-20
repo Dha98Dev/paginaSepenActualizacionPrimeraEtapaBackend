@@ -9,6 +9,7 @@ use App\Models\TiposDocumento;
 use Carbon\Carbon;
 use DB;
 use Illuminate\Http\Request;
+use Storage;
 use Str;
 
 class DocumentoController extends Controller
@@ -21,7 +22,7 @@ class DocumentoController extends Controller
             'descripcion' => 'nullable|string',
             'documento_padre_id' => 'nullable|integer|exists:documentos,id',
             'grupo_id' => 'nullable|integer|exists:grupos_escalafon,id',
-            'archivo' => 'required|file|max:20480',
+            'archivo' => 'required|file|max:100480',
             'fecha_publicacion' => 'required|date',
         ]);
 
@@ -322,5 +323,181 @@ class DocumentoController extends Controller
             ],
             'data' => $agrupados
         ], 200);
+    }
+    public function obtenerHistoricoCatalogosYProyectos()
+    {
+        $tipos = TiposDocumento::whereIn(DB::raw('UPPER(tipo_documento)'), ['PROYECTO', 'CATALOGO'])
+            ->get()
+            ->keyBy(function ($item) {
+                return strtoupper($item->tipo_documento);
+            });
+
+        if (!isset($tipos['PROYECTO']) || !isset($tipos['CATALOGO'])) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se encontraron los tipos de documento PROYECTO y/o CATALOGO'
+            ], 404);
+        }
+
+        $documentos = Documento::with([
+            'archivo',
+            'tipos_documento',
+            'grupos_escalafon'
+        ])
+            ->whereIn('tipo_documento_id', [
+                $tipos['PROYECTO']->id,
+                $tipos['CATALOGO']->id
+            ])
+            ->whereNull('documento_padre_id')
+            ->where('publicado', true)
+            ->orderBy('fecha_publicacion', 'desc')
+            ->get();
+
+        $registros = $documentos
+            ->groupBy(function ($doc) {
+                $anio = $doc->fecha_publicacion
+                    ? $doc->fecha_publicacion->format('Y')
+                    : ($doc->anio ?? 'sin_anio');
+
+                $grupoId = $doc->grupo_id ?? 'sin_grupo';
+
+                return $anio . '_' . $grupoId;
+            })
+            ->map(function ($items) {
+                $primero = $items->first();
+
+                $anio = $primero->fecha_publicacion
+                    ? (int) $primero->fecha_publicacion->format('Y')
+                    : (int) $primero->anio;
+
+                $grupo = $primero->grupos_escalafon ? [
+                    'id' => $primero->grupos_escalafon->id,
+                    'descripcion' => $primero->grupos_escalafon->descripcion,
+                ] : null;
+
+                $proyecto = $items->first(function ($doc) {
+                    return strtoupper($doc->tipos_documento->tipo_documento ?? '') === 'PROYECTO';
+                });
+
+                $catalogo = $items->first(function ($doc) {
+                    return strtoupper($doc->tipos_documento->tipo_documento ?? '') === 'CATALOGO';
+                });
+
+                return [
+                    'anio' => $anio,
+                    'grupo' => $grupo,
+                    'proyecto' => $proyecto ? [
+                        'id' => $proyecto->id,
+                        'titulo' => $proyecto->titulo,
+                        'descripcion' => $proyecto->descripcion,
+                        'fecha_publicacion' => $proyecto->fecha_publicacion,
+                        'archivo' => $proyecto->archivo ? [
+                            'id' => $proyecto->archivo->id,
+                            'nombre_original' => $proyecto->archivo->nombre_original,
+                            'nombre_guardado' => $proyecto->archivo->nombre_guardado,
+                            'url_publica' => $proyecto->archivo->url_publica,
+                            'extension' => $proyecto->archivo->extension,
+                            'tipo_mime' => $proyecto->archivo->tipo_mime,
+                            'tamano_bytes' => $proyecto->archivo->tamano_bytes,
+                        ] : null,
+                    ] : null,
+                    'catalogo' => $catalogo ? [
+                        'id' => $catalogo->id,
+                        'titulo' => $catalogo->titulo,
+                        'descripcion' => $catalogo->descripcion,
+                        'fecha_publicacion' => $catalogo->fecha_publicacion,
+                        'archivo' => $catalogo->archivo ? [
+                            'id' => $catalogo->archivo->id,
+                            'nombre_original' => $catalogo->archivo->nombre_original,
+                            'nombre_guardado' => $catalogo->archivo->nombre_guardado,
+                            'url_publica' => $catalogo->archivo->url_publica,
+                            'extension' => $catalogo->archivo->extension,
+                            'tipo_mime' => $catalogo->archivo->tipo_mime,
+                            'tamano_bytes' => $catalogo->archivo->tamano_bytes,
+                        ] : null,
+                    ] : null,
+                ];
+            })
+            ->sortByDesc('anio')
+            ->values();
+
+        $dataAgrupada = $registros
+            ->groupBy('anio')
+            ->map(function ($items, $anio) {
+                return [
+                    'anio' => (int) $anio,
+                    'registros' => $items->sortBy(function ($item) {
+                        return $item['grupo']['descripcion'] ?? '';
+                    })->values(),
+                ];
+            })
+            ->sortByDesc('anio')
+            ->values();
+
+        $aniosDisponibles = $dataAgrupada
+            ->pluck('anio')
+            ->values();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Histórico de proyectos y catálogos obtenido correctamente',
+            'metadata' => [
+                'anios_disponibles' => $aniosDisponibles,
+                'total_anios' => $dataAgrupada->count(),
+                'total_registros' => $registros->count(),
+            ],
+            'data' => $dataAgrupada
+        ], 200);
+    }
+    public function destroy($id)
+    {
+        DB::beginTransaction();
+
+        try {
+            $documento = Documento::with(['archivo', 'resultados'])->find($id);
+
+            if (!$documento) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Documento no encontrado'
+                ], 404);
+            }
+
+            if ($documento->resultados && $documento->resultados->count() > 0) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'No se puede eliminar el documento porque tiene archivos o resultados relacionados'
+                ], 409);
+            }
+
+            $rutaArchivo = $documento->archivo?->ruta;
+            $archivoId = $documento->archivo?->id;
+
+            $documento->delete();
+
+            if ($archivoId) {
+                Archivo::where('id', $archivoId)->delete();
+            }
+
+            if ($rutaArchivo && Storage::disk('public')->exists($rutaArchivo)) {
+                Storage::disk('public')->delete($rutaArchivo);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'ok' => true,
+                'message' => 'Documento eliminado correctamente'
+            ], 200);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Error al eliminar el documento',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

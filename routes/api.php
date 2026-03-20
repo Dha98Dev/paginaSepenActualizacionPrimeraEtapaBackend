@@ -36,3 +36,5 @@ Route::get('escalafon/documentos/boletines', [DocumentoController::class, 'obten
 Route::get('escalafon/documentos/convocatorias-vacantes', [DocumentoController::class, 'obtenerConvocatoriasVacantes']);
 Route::get('escalafon/documentos/por-tipo', [DocumentoController::class, 'obtenerPorTipoYAnio']);
 Route::get('escalafon/documentos/por-anio', [DocumentoController::class, 'obtenerPorAnio']);
+Route::get('escalafon/documentos/historico-catalogos-proyectos', [DocumentoController::class, 'obtenerHistoricoCatalogosYProyectos']);
+Route::delete('escalafon/documentos/{id}', [DocumentoController::class, 'destroy']);
