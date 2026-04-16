@@ -1,17 +1,17 @@
 <?php
 
-namespace App\Http\Controllers\Api\Escalafon\documentos;
+namespace App\Http\Controllers\Api\Documentos;
 
 use App\Http\Controllers\Controller;
+use App\Models\Modulo;
+use Illuminate\Http\Request;
 use App\Models\Archivo;
 use App\Models\Documento;
 use App\Models\TiposDocumento;
 use Carbon\Carbon;
 use DB;
-use Illuminate\Http\Request;
 use Storage;
 use Str;
-
 class DocumentoController extends Controller
 {
     public function store(Request $request)
@@ -24,6 +24,7 @@ class DocumentoController extends Controller
             'grupo_id' => 'nullable|integer|exists:grupos_escalafon,id',
             'archivo' => 'required|file|max:100480',
             'fecha_publicacion' => 'required|date',
+            'modulo' => 'required|string|max:255',
         ]);
 
         DB::beginTransaction();
@@ -44,7 +45,7 @@ class DocumentoController extends Controller
 
             $nombreGuardado = time() . '_' . Str::slug($nombreBase, '_') . '.' . $extension;
 
-            $directorio = "escalafon/{$slugTipoDocumento}/{$anio}";
+            $directorio = "{$request->modulo}/{$slugTipoDocumento}/{$anio}";
             $ruta = $file->storeAs($directorio, $nombreGuardado, 'public');
 
             $hashArchivo = hash_file('sha256', $file->getRealPath());
@@ -450,6 +451,224 @@ class DocumentoController extends Controller
         ], 200);
     }
 
+    public function obtenerPorModulo(Request $request, string $modulo)
+    {
+        $moduloTexto = trim($modulo);
+
+        $moduloEncontrado = Modulo::whereRaw('LOWER(descripcion) = ?', [strtolower($moduloTexto)])
+            ->first();
+
+        if (!$moduloEncontrado) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'No se encontró el módulo solicitado',
+                'modulo_buscado' => $moduloTexto
+            ], 404);
+        }
+
+        $documentos = Documento::with([
+            'archivo',
+            'tipos_documento',
+            'grupos_escalafon',
+            'resultados.archivo',
+            'resultados.tipos_documento',
+            'resultados.grupos_escalafon'
+        ])
+            ->whereHas('tipos_documento', function ($query) use ($moduloEncontrado) {
+                $query->where('modulo_id', $moduloEncontrado->id);
+            })
+            ->whereNull('documento_padre_id')
+            ->where('publicado', true)
+            ->orderBy('fecha_publicacion', 'desc')
+            ->get();
+
+        $agrupados = $documentos
+            ->groupBy(function ($doc) {
+                return $doc->tipos_documento->tipo_documento ?? 'Sin tipo';
+            })
+            ->map(function ($items, $tipo) {
+                return [
+                    'tipo_documento' => $tipo,
+                    'total' => $items->count(),
+                    'documentos' => $items->map(function ($doc) {
+                        return [
+                            'id' => $doc->id,
+                            'titulo' => $doc->titulo,
+                            'descripcion' => $doc->descripcion,
+                            'anio' => $doc->anio,
+                            'fecha_publicacion' => $doc->fecha_publicacion,
+                            'grupo' => $doc->grupos_escalafon ? [
+                                'id' => $doc->grupos_escalafon->id,
+                                'descripcion' => $doc->grupos_escalafon->descripcion,
+                            ] : null,
+                            'tipo_documento' => $doc->tipos_documento ? [
+                                'id' => $doc->tipos_documento->id,
+                                'descripcion' => $doc->tipos_documento->tipo_documento,
+                            ] : null,
+                            'archivo' => $doc->archivo ? [
+                                'id' => $doc->archivo->id,
+                                'nombre_original' => $doc->archivo->nombre_original,
+                                'nombre_guardado' => $doc->archivo->nombre_guardado,
+                                'url_publica' => $doc->archivo->url_publica,
+                                'extension' => $doc->archivo->extension,
+                                'tipo_mime' => $doc->archivo->tipo_mime,
+                                'tamano_bytes' => $doc->archivo->tamano_bytes,
+                            ] : null,
+                            'archivos_relacionados' => $doc->resultados->map(function ($resultado) {
+                                return [
+                                    'id' => $resultado->id,
+                                    'titulo' => $resultado->titulo,
+                                    'descripcion' => $resultado->descripcion,
+                                    'anio' => $resultado->anio,
+                                    'fecha_publicacion' => $resultado->fecha_publicacion,
+                                    'grupo' => $resultado->grupos_escalafon ? [
+                                        'id' => $resultado->grupos_escalafon->id,
+                                        'descripcion' => $resultado->grupos_escalafon->descripcion,
+                                    ] : null,
+                                    'tipo_documento' => $resultado->tipos_documento ? [
+                                        'id' => $resultado->tipos_documento->id,
+                                        'descripcion' => $resultado->tipos_documento->tipo_documento,
+                                    ] : null,
+                                    'archivo' => $resultado->archivo ? [
+                                        'id' => $resultado->archivo->id,
+                                        'nombre_original' => $resultado->archivo->nombre_original,
+                                        'nombre_guardado' => $resultado->archivo->nombre_guardado,
+                                        'url_publica' => $resultado->archivo->url_publica,
+                                        'extension' => $resultado->archivo->extension,
+                                        'tipo_mime' => $resultado->archivo->tipo_mime,
+                                        'tamano_bytes' => $resultado->archivo->tamano_bytes,
+                                    ] : null,
+                                ];
+                            })->values(),
+                            'numero_archivos_relacionados' => $doc->resultados->count(),
+                        ];
+                    })->values(),
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'ok' => true,
+            'message' => 'Documentos obtenidos correctamente',
+            'modulo' => [
+                'id' => $moduloEncontrado->id,
+                'descripcion' => $moduloEncontrado->descripcion
+            ],
+            'metadata' => [
+                'total_tipos_documento' => $agrupados->count(),
+                'total_documentos' => $documentos->count(),
+            ],
+            'data' => $agrupados
+        ], 200);
+    }
+
+    public function actualizarDocumento(Request $request, int $id)
+    {
+        $request->validate([
+            'tipo_documento_id' => 'required|integer|exists:tipos_documentos,id',
+            'titulo' => 'required|string|max:255',
+            'descripcion' => 'nullable|string',
+            'fecha_publicacion' => 'required|date',
+            'grupo_id' => 'nullable|integer|exists:grupos_escalafon,id',
+            'documento_padre_id' => 'nullable|integer|exists:documentos,id',
+            'archivo' => 'nullable|file|max:10240',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+            $documento = Documento::with(['archivo', 'tipos_documento'])->find($id);
+
+            if (!$documento) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Documento no encontrado'
+                ], 404);
+            }
+
+            $documento->update([
+                'tipo_documento_id' => $request->tipo_documento_id,
+                'titulo' => trim($request->titulo),
+                'descripcion' => $request->descripcion ? trim($request->descripcion) : null,
+                'grupo_id' => $request->filled('grupo_id') ? $request->grupo_id : null,
+                'documento_padre_id' => $request->filled('documento_padre_id') ? $request->documento_padre_id : null,
+                'fecha_publicacion' => $request->fecha_publicacion,
+            ]);
+
+            if ($request->hasFile('archivo')) {
+                $archivoAnterior = $documento->archivo;
+
+                $tipoDocumento = TiposDocumento::find($request->tipo_documento_id);
+
+                if (!$tipoDocumento) {
+                    DB::rollBack();
+                    return response()->json([
+                        'ok' => false,
+                        'message' => 'Tipo de documento no encontrado'
+                    ], 404);
+                }
+
+                $nombreCarpeta = Str::slug($tipoDocumento->tipo_documento);
+                $anio = Carbon::parse($request->fecha_publicacion)->format('Y');
+
+                $archivoNuevo = $request->file('archivo');
+                $nombreOriginal = $archivoNuevo->getClientOriginalName();
+                $extension = strtolower($archivoNuevo->getClientOriginalExtension());
+
+                $nombreBase = pathinfo($nombreOriginal, PATHINFO_FILENAME);
+                $nombreGuardado = time() . '_' . Str::slug($nombreBase) . '.' . $extension;
+
+                $rutaRelativa = $archivoNuevo->storeAs(
+                    "imagen/{$nombreCarpeta}/{$anio}",
+                    $nombreGuardado,
+                    'public'
+                );
+
+                if ($archivoAnterior) {
+                    if ($archivoAnterior->ruta && Storage::disk('public')->exists($archivoAnterior->ruta)) {
+                        Storage::disk('public')->delete($archivoAnterior->ruta);
+                    }
+
+                    $archivoAnterior->update([
+                        'nombre_original' => $nombreOriginal,
+                        'nombre_guardado' => $nombreGuardado,
+                        'ruta' => $rutaRelativa,
+                        'tipo_mime' => $archivoNuevo->getMimeType(),
+                        'extension' => $extension,
+                        'tamano_bytes' => $archivoNuevo->getSize(),
+                    ]);
+                } else {
+                    $nuevoArchivo = Archivo::create([
+                        'nombre_original' => $nombreOriginal,
+                        'nombre_guardado' => $nombreGuardado,
+                        'ruta' => $rutaRelativa,
+                        'tipo_mime' => $archivoNuevo->getMimeType(),
+                        'extension' => $extension,
+                        'tamano_bytes' => $archivoNuevo->getSize(),
+                    ]);
+
+                    $documento->archivo_id = $nuevoArchivo->id;
+                    $documento->save();
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'ok' => true,
+                'message' => 'Documento actualizado correctamente',
+                'data' => Documento::with(['archivo', 'tipos_documento', 'grupos_escalafon', 'resultados.archivo'])->find($documento->id)
+            ]);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'ok' => false,
+                'message' => 'Error al actualizar el documento',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
     public function destroy($id)
     {
         DB::beginTransaction();

@@ -39,7 +39,8 @@ use Illuminate\Database\Eloquent\Model;
 class Documento extends Model
 {
 	protected $table = 'documentos';
-	public $incrementing = false;
+	public $incrementing = true;
+protected $keyType = 'int';
 
 	protected $casts = [
 		'id' => 'int',

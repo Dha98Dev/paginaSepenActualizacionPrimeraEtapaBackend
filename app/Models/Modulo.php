@@ -22,7 +22,8 @@ use Illuminate\Database\Eloquent\Model;
 class Modulo extends Model
 {
 	protected $table = 'modulos';
-	public $incrementing = false;
+	public $incrementing = true;
+protected $keyType = 'int';
 	public $timestamps = false;
 
 	protected $casts = [
@@ -36,5 +37,9 @@ class Modulo extends Model
 	public function tipos_documentos()
 	{
 		return $this->hasMany(TiposDocumento::class);
+	}
+	public function submodulos()
+	{
+		return $this->hasMany(Submodulo::class, 'modulo_id');
 	}
 }

@@ -24,7 +24,8 @@ use Illuminate\Database\Eloquent\Model;
 class TiposDocumento extends Model
 {
 	protected $table = 'tipos_documentos';
-	public $incrementing = false;
+	public $incrementing = true;
+protected $keyType = 'int';
 	public $timestamps = false;
 
 	protected $casts = [

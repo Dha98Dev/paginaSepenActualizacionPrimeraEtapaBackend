@@ -22,7 +22,8 @@ use Illuminate\Database\Eloquent\Model;
 class GruposEscalafon extends Model
 {
 	protected $table = 'grupos_escalafon';
-	public $incrementing = false;
+	public $incrementing = true;
+protected $keyType = 'int';
 	public $timestamps = false;
 
 	protected $casts = [
