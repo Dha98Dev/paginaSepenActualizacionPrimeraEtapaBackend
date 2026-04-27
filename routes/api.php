@@ -1,8 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\Administracion\catalagoAdminController;
+use App\Http\Controllers\Api\Administracion\usuarioController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Documentos\DocumentoController;
 use App\Http\Controllers\Api\Escalafon\Catalogos\TipoDocumentosController;
+use App\Http\Controllers\Api\Micrositios\ArchivosMicrositioController;
+use App\Http\Controllers\Api\Micrositios\MicrositioController;
 use App\Http\Controllers\Api\prensa\boletines\BoletinesArchivoController;
 use App\Http\Controllers\Api\prensa\boletines\BoletinesController;
 use App\Http\Controllers\Api\Prensa\Catalogos\ConvocatoriaCatalogosController;
@@ -61,7 +65,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::delete('prensa/boletines/archivos/{archivoId}', [BoletinesArchivoController::class, 'destroy'])->middleware('permiso:prensa.comunicados.eliminar');
 
-    
+
     // ruta de documentos
     Route::post('documentos', [DocumentoController::class, 'store']);
     Route::post('documentos/{id}/actualizar', [DocumentoController::class, 'actualizarDocumento']);
@@ -75,3 +79,23 @@ Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
     });
 });
+
+Route::prefix('admin')->group(function () {
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('catalogo/roles-permisos', [catalagoAdminController::class, 'rolesConPermisos'])
+            ->middleware('permiso:catalogo.ver');
+        Route::post('usuarios', [usuarioController::class, 'storeUsuario']);
+        Route::get('usuarios', [usuarioController::class, 'indexUsuarios']);
+        Route::delete('usuarios/{id}', [usuarioController::class, 'deleteUsuario']);
+        Route::put('usuarios/{id}', [usuarioController::class, 'updateUsuario']);
+        Route::get('usuarios/{id}', [usuarioController::class, 'showUsuario']);
+        Route::prefix('micrositios')->group(function () {
+            Route::post('/guardar', [MicrositioController::class, 'guardar']);
+            Route::put('/{id}', [MicrositioController::class, 'actualizar']);
+            Route::get('/', [MicrositioController::class, 'listado']);
+            Route::post('/{id}/archivo', [ArchivosMicrositioController::class, 'guardarArchivo']);
+
+        });
+    });
+});
+Route::get('admin/micrositios/{slug}', [MicrositioController::class, 'buscarPorSlug']);

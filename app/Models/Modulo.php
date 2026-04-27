@@ -23,7 +23,7 @@ class Modulo extends Model
 {
 	protected $table = 'modulos';
 	public $incrementing = true;
-protected $keyType = 'int';
+	protected $keyType = 'int';
 	public $timestamps = false;
 
 	protected $casts = [
@@ -37,9 +37,5 @@ protected $keyType = 'int';
 	public function tipos_documentos()
 	{
 		return $this->hasMany(TiposDocumento::class);
-	}
-	public function submodulos()
-	{
-		return $this->hasMany(Submodulo::class, 'modulo_id');
 	}
 }

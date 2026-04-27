@@ -29,7 +29,7 @@ class Permiso extends Model
 {
 	protected $table = 'permisos';
 	public $incrementing = true;
-protected $keyType = 'int';
+	protected $keyType = 'int';
 
 	protected $casts = [
 		'id' => 'int'
@@ -45,5 +45,9 @@ protected $keyType = 'int';
 	public function rol_permisos()
 	{
 		return $this->hasMany(RolPermiso::class);
+	}
+	public function modulo()
+	{
+		return $this->belongsTo(Modulo::class, 'modulo_id');
 	}
 }

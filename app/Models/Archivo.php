@@ -72,4 +72,9 @@ class Archivo extends Model
 		return $this->belongsToMany(Convocatoria::class, 'convocatoria_archivos')
 			->withPivot('id', 'tipo_relacion', 'orden', 'principal');
 	}
+	public function micrositios()
+{
+    return $this->belongsToMany(Micrositio::class, 'archivos_micrositio', 'archivo_id', 'micrositio_id')
+        ->withPivot('id');
+}
 }

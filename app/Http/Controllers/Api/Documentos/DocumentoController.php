@@ -25,6 +25,7 @@ class DocumentoController extends Controller
             'archivo' => 'required|file|max:100480',
             'fecha_publicacion' => 'required|date',
             'modulo' => 'required|string|max:255',
+            'url_externa' => 'nullable|string|max:255',
         ]);
 
         DB::beginTransaction();
@@ -74,6 +75,7 @@ class DocumentoController extends Controller
                 'anio' => $anio,
                 'fecha_publicacion' => $fechaPublicacion,
                 'publicado' => true,
+                'url_externa' => $request->url_externa,
             ]);
 
             DB::commit();

@@ -66,7 +66,8 @@ protected $keyType = 'int';
 		'consecutivo',
 		'orden',
 		'fecha_publicacion',
-		'publicado'
+		'publicado',
+		'url_externa'
 	];
 
 	public function tipos_documento()
