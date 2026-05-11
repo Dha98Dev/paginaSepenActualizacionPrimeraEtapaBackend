@@ -10,7 +10,7 @@ use Str;
 
 class MicrositioController extends Controller
 {
-      public function guardar(Request $request)
+    public function guardar(Request $request)
     {
         $validated = $request->validate([
             'nombre' => 'required|string|max:255',
@@ -67,90 +67,90 @@ class MicrositioController extends Controller
         ]);
     }
     public function listado(Request $request)
-{
-    $query = Micrositio::query();
+    {
+        $query = Micrositio::query();
 
-    // Filtro opcional por estatus
-    if ($request->has('estatus')) {
-        $query->where('estatus', $request->estatus);
-    }
+        // Filtro opcional por estatus
+        if ($request->has('estatus')) {
+            $query->where('estatus', $request->estatus);
+        }
 
-    // Búsqueda por nombre o slug
-    if ($request->has('buscar')) {
-        $buscar = strtolower($request->buscar);
+        // Búsqueda por nombre o slug
+        if ($request->has('buscar')) {
+            $buscar = strtolower($request->buscar);
 
-        $query->where(function ($q) use ($buscar) {
-            $q->whereRaw('LOWER(nombre) LIKE ?', ["%{$buscar}%"])
-              ->orWhereRaw('LOWER(slug) LIKE ?', ["%{$buscar}%"]);
-        });
-    }
+            $query->where(function ($q) use ($buscar) {
+                $q->whereRaw('LOWER(nombre) LIKE ?', ["%{$buscar}%"])
+                    ->orWhereRaw('LOWER(slug) LIKE ?', ["%{$buscar}%"]);
+            });
+        }
 
-    $micrositios = $query
-        ->orderBy('created_at', 'desc')
-        ->get();
+        $micrositios = $query
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-    return response()->json([
-        'ok' => true,
-        'data' => $micrositios,
-    ]);
-}
-public function actualizar(Request $request, int $id)
-{
-    $micrositio = Micrositio::find($id);
-
-    if (!$micrositio) {
         return response()->json([
-            'ok' => false,
-            'message' => 'Micrositio no encontrado'
-        ], 404);
+            'ok' => true,
+            'data' => $micrositios,
+        ]);
     }
+    public function actualizar(Request $request, int $id)
+    {
+        $micrositio = Micrositio::find($id);
 
-    $validated = $request->validate([
-        'nombre' => 'required|string|max:255',
-        'slug' => 'required|string|max:255',
-        'estructura' => 'required|array',
-        'estatus' => 'nullable|string|in:borrador,publicado,archivado',
-    ]);
+        if (!$micrositio) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Micrositio no encontrado'
+            ], 404);
+        }
 
-    // Validar que el slug no exista en otro registro
-    $existeSlug = Micrositio::where('slug', $validated['slug'])
-        ->where('id', '!=', $id)
-        ->exists();
+        $validated = $request->validate([
+            'nombre' => 'required|string|max:255',
+            'slug' => 'required|string|max:255',
+            'estructura' => 'array',
+            'estatus' => 'nullable|string|in:borrador,publicado,archivado',
+        ]);
 
-    if ($existeSlug) {
+        // Validar que el slug no exista en otro registro
+        $existeSlug = Micrositio::where('slug', $validated['slug'])
+            ->where('id', '!=', $id)
+            ->exists();
+
+        if ($existeSlug) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'El slug ya está en uso'
+            ], 422);
+        }
+
+        $micrositio->update([
+            'nombre' => $validated['nombre'],
+            'slug' => $validated['slug'],
+            'estructura' => $validated['estructura'],
+            'estatus' => $validated['estatus'] ?? $micrositio->estatus,
+            'actualizado_por' => Auth::id(),
+        ]);
+
         return response()->json([
-            'ok' => false,
-            'message' => 'El slug ya está en uso'
-        ], 422);
+            'ok' => true,
+            'message' => 'Micrositio actualizado correctamente',
+            'data' => $micrositio,
+        ]);
     }
+    public function publicar(int $id)
+    {
+        $micrositio = Micrositio::findOrFail($id);
 
-    $micrositio->update([
-        'nombre' => $validated['nombre'],
-        'slug' => $validated['slug'],
-        'estructura' => $validated['estructura'],
-        'estatus' => $validated['estatus'] ?? $micrositio->estatus,
-        'actualizado_por' => Auth::id(),
-    ]);
+        $micrositio->update([
+            'estatus' => 'publicado',
+            'publicado_en' => now(),
+            'publicado_por' => Auth::id(),
+        ]);
 
-    return response()->json([
-        'ok' => true,
-        'message' => 'Micrositio actualizado correctamente',
-        'data' => $micrositio,
-    ]);
-}
-public function publicar(int $id)
-{
-    $micrositio = Micrositio::findOrFail($id);
-
-    $micrositio->update([
-        'estatus' => 'publicado',
-        'publicado_en' => now(),
-        'publicado_por' => Auth::id(),
-    ]);
-
-    return response()->json([
-        'ok' => true,
-        'message' => 'Micrositio publicado'
-    ]);
-}
+        return response()->json([
+            'ok' => true,
+            'message' => 'Micrositio publicado'
+        ]);
+    }
 }

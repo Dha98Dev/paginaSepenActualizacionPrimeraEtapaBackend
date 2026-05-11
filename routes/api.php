@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\Administracion\usuarioController;
 use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Documentos\DocumentoController;
 use App\Http\Controllers\Api\Escalafon\Catalogos\TipoDocumentosController;
+use App\Http\Controllers\Api\Menus\MenuController;
 use App\Http\Controllers\Api\Micrositios\ArchivosMicrositioController;
 use App\Http\Controllers\Api\Micrositios\MicrositioController;
 use App\Http\Controllers\Api\prensa\boletines\BoletinesArchivoController;
@@ -94,8 +95,26 @@ Route::prefix('admin')->group(function () {
             Route::put('/{id}', [MicrositioController::class, 'actualizar']);
             Route::get('/', [MicrositioController::class, 'listado']);
             Route::post('/{id}/archivo', [ArchivosMicrositioController::class, 'guardarArchivo']);
+            Route::delete('/archivo/eliminar', [ArchivosMicrositioController::class, 'eliminarArchivoPorUrl']);
 
         });
     });
 });
+Route::middleware(['auth:sanctum'])->group(function () {
+ Route::prefix('admin/menus')->group(function () {
+    Route::get('/', [MenuController::class, 'index']);
+    Route::post('/', [MenuController::class, 'store']);
+    Route::get('/{id}', [MenuController::class, 'show']);
+    Route::put('/{id}', [MenuController::class, 'update']);
+    Route::delete('/{id}', [MenuController::class, 'destroy']);
+
+    Route::post('/{menuId}/items', [MenuController::class, 'storeItem']);
+    Route::put('/items/{itemId}', [MenuController::class, 'updateItem']);
+    Route::delete('/items/{itemId}', [MenuController::class, 'destroyItem']);
+    Route::post('/{menuId}/items/reordenar', [MenuController::class, 'reorderItems']);
+});
+
+});
+Route::get('menus/{code}', [MenuController::class, 'showByCode']);
+
 Route::get('admin/micrositios/{slug}', [MicrositioController::class, 'buscarPorSlug']);
